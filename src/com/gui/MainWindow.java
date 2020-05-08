@@ -5,11 +5,7 @@ import org.apache.ibatis.jdbc.ScriptRunner;
 import javax.swing.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.awt.event.WindowEvent;
-import java.io.BufferedReader;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.Reader;
+import java.io.*;
 import java.sql.*;
 
 public class MainWindow {
@@ -55,9 +51,14 @@ public class MainWindow {
             reader = new BufferedReader(new FileReader(str_ScriptBasePath + cmb_Query.getSelectedItem().toString()));
             sr.setSendFullScript(true);
             sr.runScript(reader);
+            reader.close();
+            //TODO: Return SQL RESPONSE https://stackoverflow.com/questions/8708342/redirect-console-output-to-string-in-java
             return null;
         } catch (FileNotFoundException e) {
             return "FileNotFoundException: " + e.getMessage();
+        } catch (IOException e)
+        {
+            return "IOException: " + e.getMessage();
         }
     }
 
@@ -68,7 +69,7 @@ public class MainWindow {
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setSize(1000, 800);
         frame.setVisible(true);
-        //Close database connection when window is closed
+        //TODO: Close database connection when window is closed
         /*frame.addWindowListener(new java.awt.event.WindowAdapter()
         {
             public void windowClosing(WindowEvent winEvt)
