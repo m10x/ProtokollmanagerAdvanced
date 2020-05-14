@@ -3,6 +3,7 @@ Benötigt:
 - https://firebirdsql.org/en/jdbc-driver/
 - http://commons.apache.org/proper/commons-codec/download_codec.cgi ???
 - http://commons.apache.org/proper/commons-collections/
+- https://xmlbeans.apache.org/download/index.html
 
 Module:
 - jaybird-full-x.x.x.java11.jar
@@ -11,3 +12,4 @@ Module:
 - poi-ooxml-schemas-x.x.x.jar
 - commons-codec-x.x.jar ???
 - commons-collection4-x.x.jar
+- xmlbeans-x.x.x.jar
