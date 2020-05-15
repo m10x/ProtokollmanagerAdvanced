@@ -178,7 +178,26 @@ public class MainWindow {
                 return;
             }
 
+            //GET DEV ID
+            query = "SELECT COUNT(1) FROM device";
+            preparedStatement = connection.prepareStatement(query);
+            resultSet = preparedStatement.executeQuery();
+            String dev_id = "";
+            if (resultSet.next()) {
+                dev_id = resultSet.getString(1);
+                int conv = Integer.parseInt(dev_id);
+                dev_id = Integer.toString(++conv);
+            }
+            else
+            {
+                txtFieldStatus.setText(" Fehler beim abfragen der nächsten freien DEV_ID");
+                return;
+            }
+            System.out.println(dev_id);
+
+
             query = "INSERT INTO device ("
+                    + "dev_id,"
                     + "cust_id,"
                     + "type_id,"
                     + "dev_no,"
@@ -187,19 +206,21 @@ public class MainWindow {
                     + "f_hazard_class,"
                     + "status,"
                     + "report_no_gen) VALUES ("
-                    + "?,?,?,?,?,?,?,?)";
+                    + "?,?,?,?,?,?,?,?,?)";
 
             PreparedStatement st = connection.prepareStatement(query);
-            st.setString(1, cust_id);
-            st.setString(2, type_id);
-            st.setString(3, devicenumber);
-            st.setString(4, serial);
-            st.setString(5, location_id);
-            st.setString(6, f_hazard_class);
-            st.setString(7, "3");
-            st.setString(8, "0");
+            st.setString(1, dev_id);
+            st.setString(2, cust_id);
+            st.setString(3, type_id);
+            st.setString(4, devicenumber);
+            st.setString(5, serial);
+            st.setString(6, location_id);
+            st.setString(7, f_hazard_class);
+            st.setString(8, "3");
+            st.setString(9, "0");
 
             //TODO: PreparedStatement ausführen!
+            System.out.println(st.executeUpdate());
 
             workbook.close();
             txtFieldStatus.setText(" " + selectedFile.getName() + " wurde erfolgreich importiert");
