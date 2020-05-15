@@ -5,6 +5,7 @@ Benötigt:
 - http://commons.apache.org/proper/commons-collections/
 - https://xmlbeans.apache.org/download/index.html
 - http://commons.apache.org/proper/commons-compress/
+- http://commons.apache.org/proper/commons-lang/
 
 Module:
 - jaybird-full-x.x.x.java11.jar
@@ -15,3 +16,4 @@ Module:
 - commons-collection4-x.x.jar
 - xmlbeans-x.x.x.jar
 - commons-compress-x.x.jar
+- commons-lang3-x.x.jar
