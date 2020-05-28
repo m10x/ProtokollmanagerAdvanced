@@ -24,6 +24,7 @@ import java.sql.*;
 import java.text.NumberFormat;
 import java.util.Vector;
 
+//TODO: Dafür sorgen, dass bei Popups das X nicht gleichbedeutend mit OK ist. Vor allem bei Skripten!!!
 public class MainWindow {
     private JButton btn_Script;
     private JComboBox cmb_Query;
