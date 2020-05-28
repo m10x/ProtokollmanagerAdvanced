@@ -495,17 +495,7 @@ public class MainWindow {
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setSize(1000, 800);
         frame.setVisible(true);
-        frame.setTitle("Protokollmanager Advanced");
-        //TODO: Close database connection when window is closed
-        /*frame.addWindowListener(new java.awt.event.WindowAdapter()
-        {
-            public void windowClosing(WindowEvent winEvt)
-            {
-                if (connection != null)
-                    connection.close();
-                System.exit(0);
-            }
-        });*/
+        frame.setTitle("Protokollmanager Advanced 1.00");
     }
 
     public String connectDatabase(String str_DBPath)
