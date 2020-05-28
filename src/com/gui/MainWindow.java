@@ -5,10 +5,13 @@ import org.apache.poi.xssf.usermodel.XSSFRow;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
-import javax.sound.midi.SysexMessage;
 import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.table.DefaultTableModel;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.Style;
+import javax.swing.text.StyleConstants;
+import javax.swing.text.StyledDocument;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -18,6 +21,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.*;
+import java.text.NumberFormat;
 import java.util.Vector;
 
 public class MainWindow {
@@ -101,48 +105,150 @@ public class MainWindow {
             //Get Last Row
             int lastRow = sheet.getLastRowNum();
             //Go 1 Row up until there is a row with a . at the 10th cell
-            while (!sheet.getRow(lastRow).getCell(10).toString().contains("-")) // - da das Datumsformat zu 1-Januar-2020 umformatiert wird
+            while (sheet.getRow(lastRow).getCell(10) == null || // Zeile darf nicht null sein
+                    !sheet.getRow(lastRow).getCell(10).toString().contains("-")) // - da das Datumsformat zu 1-Januar-2020 umformatiert wird
             {
                 lastRow--;
             }
-            XSSFRow currentRow = sheet.getRow(lastRow);
+
+            DefaultTableModel dtm = new DefaultTableModel() {
+                @Override
+                public boolean isCellEditable(int row, int column) {
+                    return false;
+                }
+            };
+            dtm.addColumn("Seriennummer");
+            dtm.addColumn("Gerätenummer");
+            dtm.addColumn("Status");
+            dtm.addColumn("Protokoll");
+            DefaultTableModel returnDTM = new DefaultTableModel();
+            Boolean bool_continue = true;
+            while (bool_continue) {
+                returnDTM = this.importDeviceFromFile(sheet.getRow(lastRow), selectedFile.getName(), dtm);
+                lastRow--;
+
+                //Aktualisiere Tabel Inhalt
+                dtm = returnDTM;
+                table_Response.setModel(dtm);
+                table_Response.getColumn(table_Response.getColumnName(0)).setMaxWidth(105);         //0 = Seriennummer
+                table_Response.getColumn(table_Response.getColumnName(0)).setPreferredWidth(105);
+                table_Response.getColumn(table_Response.getColumnName(1)).setMaxWidth(105);         //1 = Gerätenummer
+                table_Response.getColumn(table_Response.getColumnName(1)).setPreferredWidth(105);
+                table_Response.getColumn(table_Response.getColumnName(2)).setMaxWidth(105);         //2 = Status
+                table_Response.getColumn(table_Response.getColumnName(2)).setPreferredWidth(105);
+
+                if (returnDTM.getValueAt(returnDTM.getRowCount()-1,2).toString().equals("Fehler")) //Wenn der letzte Eintrag "Fehler" enthält
+                {
+                    /** Erstelle PopUpBox **/
+                    final JPanel panel = new JPanel();
+                    final JRadioButton radio1 = new JRadioButton("Weiter");
+                    final JRadioButton radio2 = new JRadioButton("X überspringen und Weiter, X =");
+                    final JRadioButton radio3 = new JRadioButton("Abbrechen");
+
+                    NumberFormat amountFormat = NumberFormat.getNumberInstance();
+                    JFormattedTextField textFieldNumber = new JFormattedTextField(amountFormat);
+                    textFieldNumber.setValue(0); //DefaultValue wird immer benutzt, wenn ungültige Eingabe vorliegt, deswegen auf 0
+                    textFieldNumber.setColumns(2);
+
+                    ButtonGroup G = new ButtonGroup();
+                    G.add(radio1);
+                    G.add(radio2);
+                    G.add(radio3);
+                    panel.add(radio1);
+                    panel.add(radio2);
+                    panel.add(textFieldNumber);
+                    panel.add(radio3);
+                    radio1.setSelected(true);
+                    /** Ende Erstelle PopUpBox **/
+
+                    JOptionPane.showMessageDialog(null, panel, txtFieldStatus.getText(), JOptionPane.WARNING_MESSAGE);
+
+                    //Validiere Auswahl //Um beim nächsten weiterzumachen muss nichts verändert werden
+                    if (radio2.isSelected())
+                        lastRow = lastRow - Integer.parseInt(textFieldNumber.getValue().toString()) + 1; //Überspringe X (+1 weil vorher 1 schon abgezogen wurde)
+                    if (radio3.isSelected())
+                        bool_continue = false;
+                }
+            }
+            workbook.close();
+
+        } catch (FileNotFoundException ex) {
+            txtFieldStatus.setText(" FileNotFoundException: " + ex.getMessage());
+        } catch (IOException ex) {
+            txtFieldStatus.setText(" IOException: " + ex.getMessage());
+        }
+    }
+
+    public DefaultTableModel importDeviceFromFile(XSSFRow currentRow, String filename, DefaultTableModel dtm)
+    {
+        try {
+            Vector<Object> data = new Vector<Object>();
 
             // Get Device and Serial Number
-            if (currentRow.getCell(1).toString().length() < 4 || currentRow.getCell(2).toString().length() < 2
-                    || currentRow.getCell(3).toString().length() < 5)
-            {
-                txtFieldStatus.setText(" Ungültige Seriennummer in Zeile " + lastRow + ": " + currentRow.getCell(1).toString()
-                        + currentRow.getCell(2).toString() + currentRow.getCell(3).toString());
-                return;
+            String serial = "";
+            String devicenumber = "";
+            if (currentRow.getCell(4) != null
+                    && currentRow.getCell(4).getRichStringCellValue().length() == 11) {
+                devicenumber = currentRow.getCell(4).getRichStringCellValue().toString();
+                serial = StringUtils.right(devicenumber, 5);
+            } else {
+                txtFieldStatus.setText("Die Seriennummer vom Gerät in Reihe " + (currentRow.getRowNum()+1) + " ist leer oder hat nicht die Länge 11");
+                data = new Vector<Object>();
+                if (currentRow.getCell(3) != null)
+                    data.add(currentRow.getCell(3).toString());
+                else
+                    data.add("?");
+                if (currentRow.getCell(4) != null)
+                    data.add(currentRow.getCell(4).getRichStringCellValue().toString());
+                else
+                    data.add("?");
+                data.add("Fehler");
+                data.add("Seriennummer vom Gerät in Reihe " + (currentRow.getRowNum()+1) + " ist leer oder hat nicht die Länge 11");
+                dtm.addRow(data);
+                return dtm;
             }
-            String barcode = StringUtils.left(currentRow.getCell(1).toString(),4);
-            String year = StringUtils.left(currentRow.getCell(2).toString(),2);
-            String serial = StringUtils.left(currentRow.getCell(3).toString(),5);
-            String devicenumber = barcode + year + serial;
 
             // Get customer ID
             String query = "SELECT cust_id FROM customer WHERE f_acronym = '"
-                    + StringUtils.remove(selectedFile.getName(),".xlsx") + "';";
+                    + StringUtils.remove(filename, ".xlsx") + "';";
             PreparedStatement preparedStatement = connection.prepareStatement(query);
             ResultSet resultSet = preparedStatement.executeQuery();
             String cust_id = "";
             if (resultSet.next())
                 cust_id = resultSet.getString(1);
-            else
-            {
-                 txtFieldStatus.setText(" Kunde " + StringUtils.remove(selectedFile.getName(),".xlsx")
-                         + " konnte nicht gefunden werden");
-                 return;
+            else {
+                txtFieldStatus.setText(" Kunde " + StringUtils.remove(filename, ".xlsx")
+                        + " konnte nicht gefunden werden");
+                data = new Vector<Object>();
+                data.add(serial);
+                data.add(devicenumber);
+                data.add("Fehler");
+                data.add("Kunde " + StringUtils.remove(filename, ".xlsx") + " konnte nicht gefunden werden");
+                dtm.addRow(data);
+                return dtm;
             }
 
             // Check if it already exists
             Boolean exists = this.checkIfExists(serial, cust_id);
-            if (exists == null)
-                return;
-            if (exists)
-            {
+            if (exists == null){
+                txtFieldStatus.setText(" SQLException beim Abfragen ob die Gerätenummer " + devicenumber + " bereits existiert");
+                data = new Vector<Object>();
+                data.add(serial);
+                data.add(devicenumber);
+                data.add("Fehler");
+                data.add("SQLException beim Abfragen ob die Gerätenummer " + devicenumber + " bereits existiert");
+                dtm.addRow(data);
+                return dtm;
+            }
+            if (exists) {
                 txtFieldStatus.setText(" Gerät mit der Gerätenummer " + devicenumber + " existiert bereit");
-                return;
+                data = new Vector<Object>();
+                data.add(serial);
+                data.add(devicenumber);
+                data.add("Fehler");
+                data.add("Gerät mit der Gerätenummer " + devicenumber + " existiert bereit");
+                dtm.addRow(data);
+                return dtm;
             }
 
             // Get Location ID
@@ -152,11 +258,17 @@ public class MainWindow {
             String location_id = "";
             if (resultSet.next())
                 location_id = resultSet.getString(1);
-            else
-            {
+            else {
                 txtFieldStatus.setText(" Standort " + currentRow.getCell(5).toString()
                         + " konnte nicht gefunden werden");
-                return;
+                data = new Vector<Object>();
+                data.add(serial);
+                data.add(devicenumber);
+                data.add("Fehler");
+                data.add("Standort " + currentRow.getCell(5).toString()
+                        + " konnte nicht gefunden werden");
+                dtm.addRow(data);
+                return dtm;
             }
 
             // Get harzard class
@@ -171,15 +283,19 @@ public class MainWindow {
             String type_id = "";
             if (resultSet.next())
                 type_id = resultSet.getString(1);
-            else
-            {
-                txtFieldStatus.setText(" Gerätytyp " + currentRow.getCell(6).toString()
-                        + " konnte nicht gefunden werden");
-                return;
+            else {
+                data = new Vector<Object>();
+                data.add(serial);
+                data.add(devicenumber);
+                data.add("Warnung");
+                data.add("Gerätetyp " + currentRow.getCell(6).toString()
+                        + " konnte nicht gefunden werden und wurde auf Unbekannt gesetzt");
+                dtm.addRow(data);
+                type_id = "-1";
             }
 
             //GET DEV ID
-            query = "SELECT COUNT(1) FROM device";
+            query = "SELECT MAX(dev_id) FROM device";
             preparedStatement = connection.prepareStatement(query);
             resultSet = preparedStatement.executeQuery();
             String dev_id = "";
@@ -187,14 +303,16 @@ public class MainWindow {
                 dev_id = resultSet.getString(1);
                 int conv = Integer.parseInt(dev_id);
                 dev_id = Integer.toString(++conv);
-            }
-            else
-            {
+            } else {
                 txtFieldStatus.setText(" Fehler beim abfragen der nächsten freien DEV_ID");
-                return;
+                data = new Vector<Object>();
+                data.add(serial);
+                data.add(devicenumber);
+                data.add("Fehler");
+                data.add("Fehler beim abfragen der nächsten freien DEV_ID");
+                dtm.addRow(data);
+                return dtm;
             }
-            System.out.println(dev_id);
-
 
             query = "INSERT INTO device ("
                     + "dev_id,"
@@ -219,17 +337,23 @@ public class MainWindow {
             st.setString(8, "3");
             st.setString(9, "0");
 
-            //TODO: PreparedStatement ausführen!
-            System.out.println(st.executeUpdate());
+            if (st.executeUpdate() != 1) {
+                txtFieldStatus.setText("Beim Insert-Statement von " + devicenumber + " ist wohl ein Fehler aufgetreten.");
+            }
 
-            workbook.close();
-            txtFieldStatus.setText(" " + selectedFile.getName() + " wurde erfolgreich importiert");
-        } catch (FileNotFoundException ex) {
-            txtFieldStatus.setText(" FileNotFoundException: " + ex.getMessage());
-        } catch (IOException ex) {
-            txtFieldStatus.setText(" IOException: " + ex.getMessage());
-        } catch (SQLException ex) {
+            txtFieldStatus.setText(" " + filename + " wurde erfolgreich importiert");
+
+            data = new Vector<Object>();
+            data.add(serial);
+            data.add(devicenumber);
+            data.add("Info");
+            data.add("wurde erfolgreich importiert");
+            dtm.addRow(data);
+            return dtm;
+        }
+        catch (SQLException ex) {
             txtFieldStatus.setText(" SQLException: " + ex.getMessage());
+            return null;
         }
     }
 
@@ -267,16 +391,44 @@ public class MainWindow {
 
     public String executeScript(String str_ScriptBasePath)
     {
+        String str_ersetzen = "hierersetzen";
         try {
-            //TODO: SetRoom.sql Parameter ersetzen, SetAllHazardClass.sql wirft bei 2. UPDATE Fehler aus
-
             String filename = cmb_Query.getSelectedItem().toString();
             Path path = Paths.get(str_ScriptBasePath + filename);
+
             String content = Files.readString(path, StandardCharsets.ISO_8859_1);
-            System.out.println(content);
-            PreparedStatement preparedStatement = connection.prepareStatement(content);
+            if (content.contains(str_ersetzen))
+            {
+                /** Erstelle PopUpBox **/
+                final JPanel panel = new JPanel();
+
+                JTextPane textPane = new JTextPane();
+                panel.add(textPane);
+
+                StyledDocument doc = textPane.getStyledDocument();
+                Style styleRed = textPane.addStyle("style", null);
+                StyleConstants.setForeground(styleRed, Color.red);
+
+                String[] contentSeperate = content.split(str_ersetzen);
+                doc.insertString(doc.getLength(), contentSeperate[0], null); //Erste ohne Style
+
+                for (int i = 1; i < contentSeperate.length; i++)
+                {
+                    doc.insertString(doc.getLength(), str_ersetzen, styleRed); //ersetzenString in Rot
+                    doc.insertString(doc.getLength(), contentSeperate[i], null); //Rest ohne Farbe
+                }
+                /** Ende Erstelle PopUpBox **/
+
+                JOptionPane.showMessageDialog(null, panel, "Das Skript enthält hierersetzen, was ersetzt werden muss", JOptionPane.INFORMATION_MESSAGE);
+
+                content = textPane.getText();
+                System.out.println(content);
+            }
+
+            PreparedStatement preparedStatement = null;
 
             if (filename.startsWith("Check") || filename.startsWith("Get")) {
+                preparedStatement = connection.prepareStatement(content);
                 try (ResultSet resultSet = preparedStatement.executeQuery()) {
                     ResultSetMetaData rsmd = resultSet.getMetaData();
                     int columnCount = rsmd.getColumnCount();
@@ -304,7 +456,23 @@ public class MainWindow {
             if (filename.startsWith("Set") || filename.startsWith("Update"))
             {
                 table_Response.setModel(new DefaultTableModel()); // Remove Tablecontent
-                int updateCount = preparedStatement.executeUpdate();
+
+                //updateCount ist sowohl zum zählen der update statements als auch nachher zum wiedergeben der geupdateten zeilen
+                int updateCount = StringUtils.countMatches(content.toLowerCase(), "update");
+                if (updateCount > 1)
+                {
+                    String[] contentSeperate = content.toLowerCase().split("update");
+                    updateCount = 0;
+                    for (int i = 1; i < contentSeperate.length; i++)
+                    {
+                        preparedStatement = connection.prepareStatement("update" + contentSeperate[i]);
+                        updateCount = updateCount + preparedStatement.executeUpdate();
+                    }
+                }
+                else {
+                    preparedStatement = connection.prepareStatement(content);
+                    updateCount = preparedStatement.executeUpdate();
+                }
                 return "Es wurden " + updateCount + " Datensätze geupdatet";
             }
 
@@ -315,6 +483,8 @@ public class MainWindow {
             return "IOException: " + e.getMessage();
         } catch (SQLException e) {
             return "SQLException: " + e.getMessage();
+        } catch (BadLocationException e) {
+            return "BadLocationException" + e.getMessage();
         }
     }
 
