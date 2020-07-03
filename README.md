@@ -6,6 +6,7 @@ Benötigt:
 - https://xmlbeans.apache.org/download/index.html
 - http://commons.apache.org/proper/commons-compress/
 - http://commons.apache.org/proper/commons-lang/
+- https://fazecast.github.io/jSerialComm/
 
 Module:
 - jaybird-full-x.x.x.java11.jar
@@ -17,3 +18,4 @@ Module:
 - xmlbeans-x.x.x.jar
 - commons-compress-x.x.jar
 - commons-lang3-x.x.jar
+- jSerialComm-x.x.x.jar
