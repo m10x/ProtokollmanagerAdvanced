@@ -3,15 +3,6 @@
     <output-path>$PROJECT_DIR$/out/artifacts/Protokollmanager_Advanced_jar</output-path>
     <root id="archive" name="Protokollmanager Advanced.jar">
       <element id="module-output" name="Protokollmanager Advanced" />
-      <element id="extracted-dir" path="$PROJECT_DIR$/../../../../Program Files/JetBrains/commons-codec-1.14/commons-codec-1.14.jar" path-in-jar="/" />
-      <element id="extracted-dir" path="$PROJECT_DIR$/../../../../Program Files/JetBrains/commons-collections4-4.4/commons-collections4-4.4.jar" path-in-jar="/" />
-      <element id="extracted-dir" path="$PROJECT_DIR$/../../../../Program Files/JetBrains/xmlbeans-3.1.0/lib/xmlbeans-3.1.0.jar" path-in-jar="/" />
-      <element id="extracted-dir" path="$PROJECT_DIR$/../../../../Program Files/JetBrains/commons-compress-1.20/commons-compress-1.20.jar" path-in-jar="/" />
-      <element id="extracted-dir" path="$PROJECT_DIR$/../../../../Program Files/JetBrains/poi-4.1.2/poi-ooxml-schemas-4.1.2.jar" path-in-jar="/" />
-      <element id="extracted-dir" path="$PROJECT_DIR$/../../../../Program Files/JetBrains/poi-4.1.2/poi-4.1.2.jar" path-in-jar="/" />
-      <element id="extracted-dir" path="$PROJECT_DIR$/../../../../Program Files/JetBrains/jaybird-4.0.0.java11/jaybird-full-4.0.0.java11.jar" path-in-jar="/" />
-      <element id="extracted-dir" path="$PROJECT_DIR$/../../../../Program Files/JetBrains/poi-4.1.2/poi-ooxml-4.1.2.jar" path-in-jar="/" />
-      <element id="extracted-dir" path="$PROJECT_DIR$/../../../../Program Files/JetBrains/commons-lang3-3.10/commons-lang3-3.10.jar" path-in-jar="/" />
     </root>
   </artifact>
 </component>

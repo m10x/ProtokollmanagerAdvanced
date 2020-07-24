@@ -1,5 +1,6 @@
 package com.gui;
 
+import com.fazecast.jSerialComm.SerialPort;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.poi.xssf.usermodel.XSSFRow;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
@@ -13,6 +14,7 @@ import javax.swing.text.Style;
 import javax.swing.text.StyleConstants;
 import javax.swing.text.StyledDocument;
 import java.awt.*;
+
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -27,13 +29,27 @@ public class MainWindow {
     private JComboBox<String> cmb_Query;
     private JPanel panel_Main;
     private JTextField txtFieldStatus;
-    private JTable table_Response;
-    private JScrollPane pane_Table;
-    private JButton btn_Import;
-    private static final String VERSION = "1.04";
+    private JTable table_Import;
+    private JScrollPane pane_Import_Table;
+    private JButton btn_ImportXLSX;
+    private JButton btn_ImportP1;
+    private JTabbedPane pane_Tabs;
+    private JPanel panel_Import;
+    private JPanel panel_View;
+    private JPanel panel_Import_Buttons;
+    private JScrollPane pane_View_Table;
+    private JTable table_View;
+    private JPanel panel_View_Buttons;
+    private JButton btn_Expired;
+    private JButton btn_All;
+    private static final String VERSION = "1.08";
     private static final String ERSETZEN = "hierersetzen";
 
     public Connection connection;
+
+    //TODO: Bei Tabelle RaumID und KundenID durch Namen ersetzen
+    //TODO: Bei Gerätetyp welcher mehrmals vorhanden ist nach Hersteller suchen
+    //TODO: Bei falschem Kundennamen: Prüfbericht richtigem Gerät zuordnen und falsches Gerät löschen
 
     /** Programm Start **/
     public static void main(String[] args) {
@@ -65,28 +81,51 @@ public class MainWindow {
 
         this.addCheckboxItems(str_ScriptBasePath);
 
-        btn_Script.addActionListener(e -> {
-            String str_result = executeScript(str_ScriptBasePath);
-            txtFieldStatus.setText(" " + str_result);
+        btn_Script.addActionListener(e -> txtFieldStatus.setText(" " + executeScript(str_ScriptBasePath)));
+        btn_ImportXLSX.addActionListener(e -> importExcel(str_ImportPath));
+        btn_ImportP1.addActionListener(e -> importP1());
+        btn_Expired.addActionListener(e -> {
+            String selections = "DEV_ID, CUST_ID, TYPE_ID, DEV_NO, SERIAL_NO, LOCATION_ID, STATUS, CURR_REPORT_ID, NEXT_SAFETY_TEST, LAST_SAFETY_TEST";
+            SelectQueryToTable("SELECT " + selections + " FROM device WHERE next_safety_test <= dateadd(1 MONTH TO CURRENT_DATE)", true);
         });
-        btn_Import.addActionListener(e -> importExcel(str_ImportPath));
+        btn_All.addActionListener(e -> {
+            String selections = "DEV_ID, CUST_ID, TYPE_ID, DEV_NO, SERIAL_NO, LOCATION_ID, STATUS, CURR_REPORT_ID, NEXT_SAFETY_TEST, LAST_SAFETY_TEST";
+            SelectQueryToTable("SELECT " + selections + " FROM device", true);
+        });
     }
 
     /** Programm Start Hilfsmethode**/
     public void setStyle() {
         Color color_Background = new Color(32, 136, 203);
-        table_Response.setBackground(color_Background);
-        panel_Main.setBackground(color_Background);
+
+        JPanel[] panels = {panel_Main, panel_Import_Buttons, panel_View_Buttons, panel_Import, panel_View};
+        for (JPanel panel : panels)
+        {
+            panel.setBackground(color_Background);
+        }
+
         txtFieldStatus.setBackground(color_Background);
         txtFieldStatus.setForeground(Color.white);
-        txtFieldStatus.setBorder(javax.swing.BorderFactory.createEmptyBorder());
-        table_Response.setForeground(Color.white);
-        table_Response.setSelectionBackground(Color.red);
-        table_Response.setSelectionForeground(Color.white);
-        pane_Table.getViewport().setBackground(Color.white);
-        pane_Table.setBorder(javax.swing.BorderFactory.createLineBorder(Color.white));
-        table_Response.setGridColor(Color.white);
-        table_Response.setAutoCreateRowSorter(true);
+        txtFieldStatus.setBorder(BorderFactory.createEmptyBorder());
+
+        JScrollPane[] scrollPanes = {pane_Import_Table, pane_View_Table};
+        for (JScrollPane scrollPane : scrollPanes) {
+            scrollPane.getViewport().setBackground(Color.white);
+            scrollPane.setBorder(BorderFactory.createLineBorder(Color.white));
+        }
+
+        JTable[] tables = {table_Import, table_View};
+        for (JTable table : tables) {
+            table.setBackground(color_Background);
+            table.setForeground(Color.white);
+            table.setSelectionBackground(Color.red);
+            table.setSelectionForeground(Color.white);
+            table.setGridColor(Color.white);
+            table.setAutoCreateRowSorter(true);
+        }
+
+        pane_Tabs.setTitleAt(0,"Import");
+        pane_Tabs.setTitleAt(1,"View");
 
         try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); } //Setze Windows Look!
         catch (UnsupportedLookAndFeelException e) {
@@ -170,8 +209,9 @@ public class MainWindow {
             paths = this.setPathsOnStart();
             if (paths[0] == null) {
                 error += " Datenbankpfad ist null!";
-            } else {
-                paths[0] = "jdbc:firebirdsql://localhost:3050/" + paths[0]; //local firebirdsql server
+            } else if (paths[0].equals("C:\\Users\\Public\\Documents\\MEBEDO\\PROTOKOLLmanager8\\DB\\Datenbank.FDB")) {
+                error += " Datenbankpfad darf nicht " + paths[0] + " sein!";
+                paths[0] = null;
             }
             if (paths[1] == null) {
                 error += " Skriptpfad ist null!";
@@ -213,7 +253,7 @@ public class MainWindow {
     /** Alle Button disablen, falls ein Pfad null oder ungültig ist **/
     public void disableAll(boolean disable)
     {
-        btn_Import.setEnabled(disable);
+        btn_ImportXLSX.setEnabled(disable);
         btn_Script.setEnabled(disable);
         cmb_Query.setEnabled(disable);
     }
@@ -317,13 +357,13 @@ public class MainWindow {
         {
             txtFieldStatus.setText(" Die Datenbank befindet sich nicht mehr in: " + str_DBPath);
             btn_Script.setEnabled(false);
-            btn_Import.setEnabled(false);
+            btn_ImportXLSX.setEnabled(false);
             return;
         }
 
         try {
             connection = DriverManager.getConnection(
-                    str_DBPath,
+                    "jdbc:firebirdsql://localhost:3050/" + str_DBPath + "?charSet=utf-8",
                     "SYSDBA", "masterkey");
             txtFieldStatus.setText(" Verbindung erfolgreich hergestellt.");
         } catch (SQLException ex) {
@@ -392,13 +432,13 @@ public class MainWindow {
 
                 //Aktualisiere Tabel Inhalt
                 dtm = returnDTM;
-                table_Response.setModel(dtm);
-                table_Response.getColumn(table_Response.getColumnName(0)).setMaxWidth(105);         //0 = Seriennummer
-                table_Response.getColumn(table_Response.getColumnName(0)).setPreferredWidth(105);
-                table_Response.getColumn(table_Response.getColumnName(1)).setMaxWidth(105);         //1 = Gerätenummer
-                table_Response.getColumn(table_Response.getColumnName(1)).setPreferredWidth(105);
-                table_Response.getColumn(table_Response.getColumnName(2)).setMaxWidth(105);         //2 = Status
-                table_Response.getColumn(table_Response.getColumnName(2)).setPreferredWidth(105);
+                table_Import.setModel(dtm);
+                table_Import.getColumn(table_Import.getColumnName(0)).setMaxWidth(105);         //0 = Seriennummer
+                table_Import.getColumn(table_Import.getColumnName(0)).setPreferredWidth(105);
+                table_Import.getColumn(table_Import.getColumnName(1)).setMaxWidth(105);         //1 = Gerätenummer
+                table_Import.getColumn(table_Import.getColumnName(1)).setPreferredWidth(105);
+                table_Import.getColumn(table_Import.getColumnName(2)).setMaxWidth(105);         //2 = Status
+                table_Import.getColumn(table_Import.getColumnName(2)).setPreferredWidth(105);
 
                 if (returnDTM.getValueAt(returnDTM.getRowCount()-1,2).toString().equals("Fehler")) //Wenn der letzte Eintrag "Fehler" enthält
                 {
@@ -498,44 +538,53 @@ public class MainWindow {
             // Check if it already exists
             Boolean exists = this.checkIfExists(serial, cust_id);
             if (exists == null){
-                txtFieldStatus.setText(" SQLException beim Abfragen ob die Gerätenummer " + devicenumber + " bereits existiert");
+                txtFieldStatus.setText(" SQLException beim Abfragen ob die Seriennummer " + serial + " bereits existiert");
                 data = new Vector<>();
                 data.add(serial);
                 data.add(devicenumber);
                 data.add("Fehler");
-                data.add("SQLException beim Abfragen ob die Gerätenummer " + devicenumber + " bereits existiert");
+                data.add("SQLException beim Abfragen ob die Seriennummer " + serial + " bereits existiert");
                 dtm.addRow(data);
                 return dtm;
             }
             if (exists) {
-                txtFieldStatus.setText(" Gerät mit der Gerätenummer " + devicenumber + " existiert bereit");
+                txtFieldStatus.setText(" Gerät mit der Seriennummer " + serial + " existiert bereit");
                 data = new Vector<>();
                 data.add(serial);
                 data.add(devicenumber);
                 data.add("Fehler");
-                data.add("Gerät mit der Gerätenummer " + devicenumber + " existiert bereit");
+                data.add("Gerät mit der Seriennummer " + serial + " existiert bereit");
                 dtm.addRow(data);
                 return dtm;
             }
 
             // Get Location ID
-            query = "SELECT location_id FROM location WHERE location_name LIKE '" + currentRow.getCell(5).toString() + "';";
+            query = "SELECT location_id FROM location WHERE location_name LIKE '%" + currentRow.getCell(5).toString() + "%';";
             preparedStatement = connection.prepareStatement(query);
             resultSet = preparedStatement.executeQuery();
             String location_id;
-            if (resultSet.next())
+            if (resultSet.next()) {
                 location_id = resultSet.getString(1);
+                if (!resultSet.isLast())
+                {
+                    location_id = "-1";
+                    data = new Vector<>();
+                    data.add(serial);
+                    data.add(devicenumber);
+                    data.add("Warnung");
+                    data.add("Standort " + currentRow.getCell(5).toString() + " ergab mehrere Treffer in der Datenbank und wurde deswegen auf leer gesetzt");
+                    dtm.addRow(data);
+                }
+            }
             else {
-                txtFieldStatus.setText(" Standort " + currentRow.getCell(5).toString()
-                        + " konnte nicht gefunden werden");
+                location_id = "-1";
                 data = new Vector<>();
                 data.add(serial);
                 data.add(devicenumber);
-                data.add("Fehler");
+                data.add("Warnung");
                 data.add("Standort " + currentRow.getCell(5).toString()
-                        + " konnte nicht gefunden werden");
+                        + " konnte nicht gefunden werden und wurde deswegen auf leer gesetzt");
                 dtm.addRow(data);
-                return dtm;
             }
 
             // Get harzard class
@@ -549,20 +598,50 @@ public class MainWindow {
             resultSet = preparedStatement.executeQuery();
             String type_id;
             if (resultSet.next())
-                type_id = resultSet.getString(1);
+                if (resultSet.isLast())
+                    type_id = resultSet.getString(1);
+                else
+                {
+                    //Es sind mehrere Geräte dieses Typs mit verschiedenen Herstellern vorhanden
+                    //Frage nach Gerätetyp mit dem Hersteller "Unbekannt"
+                    query = "SELECT type_id FROM dev_type WHERE type_name = '" + currentRow.getCell(6).toString() + "' AND MANUFACTURER_ID = -1;";
+                    preparedStatement = connection.prepareStatement(query);
+                    resultSet = preparedStatement.executeQuery();
+                    if (resultSet.next()) {
+                        data = new Vector<>();
+                        data.add(serial);
+                        data.add(devicenumber);
+                        data.add("Warnung");
+                        data.add("Gerätetyp " + currentRow.getCell(6).toString()
+                                + " war mehrmals vorhanden, weswegen Hersteller 'Unbekannt' ausgewählt wurde");
+                        dtm.addRow(data);
+                        type_id = resultSet.getString(1);
+                    }
+                    else {
+                        data = new Vector<>();
+                        data.add(serial);
+                        data.add(devicenumber);
+                        data.add("Warnung");
+                        data.add("Gerätetyp " + currentRow.getCell(6).toString()
+                                + " ist mehrmals vorhanden, allerdings kein Mal mit Hersteller 'Unbekannt' weswegen Gerätetyp" +
+                                "auf 'Unbekannt' gesetzt wird");
+                        dtm.addRow(data);
+                        type_id = "-1";
+                    }
+                }
             else {
                 data = new Vector<>();
                 data.add(serial);
                 data.add(devicenumber);
                 data.add("Warnung");
                 data.add("Gerätetyp " + currentRow.getCell(6).toString()
-                        + " konnte nicht gefunden werden und wurde auf Unbekannt gesetzt");
+                        + " konnte nicht gefunden werden und wurde auf 'Unbekannt' gesetzt");
                 dtm.addRow(data);
                 type_id = "-1";
             }
 
             //GET DEV ID
-            query = "SELECT MAX(dev_id) FROM device";
+            query = "EXECUTE PROCEDURE SP_GEN_DEVICE_ID";
             preparedStatement = connection.prepareStatement(query);
             resultSet = preparedStatement.executeQuery();
             String dev_id;
@@ -628,7 +707,7 @@ public class MainWindow {
     public Boolean checkIfExists(String serialnumber, String cust_id)
     {
         try {
-            String query = "SELECT dev_id FROM device WHERE serial_no = " + serialnumber + " AND cust_id = " + cust_id + ";";
+            String query = "SELECT dev_id FROM device WHERE serial_no = '" + serialnumber + "' AND cust_id = '" + cust_id + "';";
             PreparedStatement preparedStatement = connection.prepareStatement(query);
             ResultSet resultSet = preparedStatement.executeQuery();
             return resultSet.next();
@@ -697,34 +776,11 @@ public class MainWindow {
             PreparedStatement preparedStatement;
 
             if (filename.startsWith("Check") || filename.startsWith("Get")) {
-                preparedStatement = connection.prepareStatement(content);
-                try (ResultSet resultSet = preparedStatement.executeQuery()) {
-                    ResultSetMetaData rsmd = resultSet.getMetaData();
-                    int columnCount = rsmd.getColumnCount();
-                    DefaultTableModel dtm = new DefaultTableModel() {
-                        @Override
-                        public boolean isCellEditable(int row, int column) {
-                            return false;
-                        }
-                    };
-
-                    for (int i = 1; i <= columnCount; i++) {
-                        dtm.addColumn(rsmd.getColumnName(i));
-                    }
-                    while (resultSet.next()) {
-                        Vector<Object> data = new Vector<>();
-                        for (int i = 1; i <= columnCount; i++) {
-                            data.add(resultSet.getString(i));
-
-                        }
-                        dtm.addRow(data);
-                    }
-                    table_Response.setModel(dtm);
-                }
+                this.SelectQueryToTable(content, false);
             }
             if (filename.startsWith("Set") || filename.startsWith("Update"))
             {
-                table_Response.setModel(new DefaultTableModel()); // Remove Tablecontent
+                table_Import.setModel(new DefaultTableModel()); // Remove Tablecontent
 
                 //updateCount ist sowohl zum zählen der update statements als auch nachher zum wiedergeben der geupdateten zeilen
                 int updateCount = StringUtils.countMatches(content.toLowerCase(), "update");
@@ -755,5 +811,142 @@ public class MainWindow {
         } catch (BadLocationException e) {
             return "BadLocationException" + e.getMessage();
         }
+    }
+
+    /** Führe Query aus und stelle Response in Table dar **/
+    public void SelectQueryToTable(String content, boolean view)
+    {
+        try {
+            PreparedStatement preparedStatement;
+            preparedStatement = connection.prepareStatement(content);
+            try (ResultSet resultSet = preparedStatement.executeQuery()) {
+                ResultSetMetaData rsmd = resultSet.getMetaData();
+                int columnCount = rsmd.getColumnCount();
+                DefaultTableModel dtm = new DefaultTableModel() {
+                    @Override
+                    public boolean isCellEditable(int row, int column) {
+                        return false;
+                    }
+                };
+
+                for (int i = 1; i <= columnCount; i++) {
+                    dtm.addColumn(rsmd.getColumnName(i));
+                }
+                while (resultSet.next()) {
+                    Vector<Object> data = new Vector<>();
+                    for (int i = 1; i <= columnCount; i++) {
+                        data.add(resultSet.getString(i));
+
+                    }
+                    dtm.addRow(data);
+                }
+                if (view)
+                    table_View.setModel(dtm);
+                else
+                    table_Import.setModel(dtm);
+
+                txtFieldStatus.setText(" " + dtm.getRowCount() + " Geräte wurden gefunden");
+            }
+        }catch (SQLException throwables) {
+                throwables.printStackTrace();
+        }
+    }
+
+    /** Importiere Daten vom P1 Testgerät TODO: Noch nicht fertig **/
+    public void importP1()
+    {
+        SerialPort comPort = null;
+        SerialPort[] ports = SerialPort.getCommPorts();
+
+        for (SerialPort port : ports)
+        {
+            System.out.println(port.getPortDescription());
+            if (port.getPortDescription().equals("FT232R USB UART")
+                    || port.getPortDescription().equals("VCP0"))
+                comPort = port;
+        }
+
+        if (comPort == null)
+            return;
+
+        comPort.setBaudRate(19200);
+        comPort.setParity(0);
+        comPort.setNumDataBits(8);
+        comPort.setNumStopBits(0);
+        comPort.openPort();
+        try {
+            byte[] readBuffer;
+            int numRead;
+
+            //Geräte Informationen
+            byte[] buffer = hexStringToByteArray("49444e3f0d0a");
+            comPort.writeBytes(buffer, buffer.length);
+
+            Thread.sleep(1000);
+            while (comPort.bytesAvailable() == 0)
+                Thread.sleep(20);
+
+            readBuffer = new byte[comPort.bytesAvailable()];
+            numRead = comPort.readBytes(readBuffer, readBuffer.length);
+            System.out.println("Read " + numRead + " bytes.");
+            System.out.println(readBuffer);
+
+
+            //Wie viele Geräte
+            buffer = hexStringToByteArray("30303030303030314d4e4f0d0a");
+            comPort.writeBytes(buffer, buffer.length);
+
+            Thread.sleep(1000);
+
+            while (comPort.bytesAvailable() == 0)
+                Thread.sleep(20);
+
+            readBuffer = new byte[comPort.bytesAvailable()];
+            numRead = comPort.readBytes(readBuffer, readBuffer.length);
+            System.out.println("Read " + numRead + " bytes.");
+            System.out.println(readBuffer);
+
+            //Geräte Nummer 1
+            buffer = hexStringToByteArray("30303030303030314d454d303030300d0a");
+            comPort.writeBytes(buffer, buffer.length);
+
+            Thread.sleep(1000);
+
+            while (comPort.bytesAvailable() == 0)
+                Thread.sleep(20);
+
+            readBuffer = new byte[comPort.bytesAvailable()];
+            numRead = comPort.readBytes(readBuffer, readBuffer.length);
+            System.out.println("Read " + numRead + " bytes.");
+            System.out.println(readBuffer);
+
+
+            //Geräte Nummer 2
+            buffer = hexStringToByteArray("30303030303030314d454d303030310d0a");
+            comPort.writeBytes(buffer, buffer.length);
+            Thread.sleep(4000);
+
+            while (comPort.bytesAvailable() == 0)
+                Thread.sleep(20);
+
+            readBuffer = new byte[comPort.bytesAvailable()];
+            numRead = comPort.readBytes(readBuffer, readBuffer.length);
+            System.out.println("Read " + numRead + " bytes.");
+            System.out.println(readBuffer);
+
+
+        } catch (Exception e) { e.printStackTrace(); }
+        comPort.closePort();
+    }
+
+    /** Konvertiere Hex String zu Byte Array **/
+    public static byte[] hexStringToByteArray(String s) {
+        int len = s.length();
+        byte[] data = new byte[len / 2];
+        for (int i = 0; i < len; i += 2) {
+            data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4)
+                    + Character.digit(s.charAt(i+1), 16));
+        }
+        return data;
     }
 }
