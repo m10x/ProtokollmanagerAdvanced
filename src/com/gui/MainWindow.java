@@ -22,6 +22,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.*;
 import java.text.NumberFormat;
+import java.util.Arrays;
 import java.util.Vector;
 
 public class MainWindow {
@@ -42,16 +43,20 @@ public class MainWindow {
     private JPanel panel_View_Buttons;
     private JButton btn_Expired;
     private JButton btn_All;
-    private static final String VERSION = "1.08";
+    private JButton btn_NotFoundDevices;
+    private static final String VERSION = "1.09";
     private static final String ERSETZEN = "hierersetzen";
-
+    private static final String CONFIGPATH = "/Documents/Protokollmanger Advanced/paths.cfg";
+    private String status;
     public Connection connection;
 
-    //TODO: Bei Tabelle RaumID und KundenID durch Namen ersetzen
+    //TODO: Siehe TODO ganz unten
     //TODO: Bei Gerätetyp welcher mehrmals vorhanden ist nach Hersteller suchen
     //TODO: Bei falschem Kundennamen: Prüfbericht richtigem Gerät zuordnen und falsches Gerät löschen
 
-    /** Programm Start **/
+    /**
+     * Programm Start
+     **/
     public static void main(String[] args) {
         //Konfiguriere und öffne MainWindow
         JFrame frame = new JFrame("MainWindow");
@@ -62,7 +67,9 @@ public class MainWindow {
         frame.setTitle("Protokollmanager Advanced " + VERSION);
     }
 
-    /** Programm Start **/
+    /**
+     * Programm Start
+     **/
     public MainWindow() {
         //Set Style
         this.setStyle();
@@ -75,32 +82,54 @@ public class MainWindow {
         String str_DBPath = paths[0];
         String str_ScriptBasePath = paths[1] + "/";
         String str_ImportPath = paths[2] + "/";
-
         //Connecte zur Datenbank
         connectDatabase(str_DBPath);
 
         this.addCheckboxItems(str_ScriptBasePath);
+        status = txtFieldStatus.getText();
 
+        //add the Listener
+        pane_Tabs.addChangeListener(e -> {
+            /*System.out.println(""+pane_Tabs.getSelectedIndex());
+            if(pane_Tabs.getSelectedIndex()==2) //Index starts at 0, so Index 2 = Tab3
+            {//do your stuff on Tab 3}*/
+            String tmp = status;
+            status = txtFieldStatus.getText();
+            txtFieldStatus.setText(tmp);
+        });
         btn_Script.addActionListener(e -> txtFieldStatus.setText(" " + executeScript(str_ScriptBasePath)));
         btn_ImportXLSX.addActionListener(e -> importExcel(str_ImportPath));
         btn_ImportP1.addActionListener(e -> importP1());
         btn_Expired.addActionListener(e -> {
-            String selections = "DEV_ID, CUST_ID, TYPE_ID, DEV_NO, SERIAL_NO, LOCATION_ID, STATUS, CURR_REPORT_ID, NEXT_SAFETY_TEST, LAST_SAFETY_TEST";
-            SelectQueryToTable("SELECT " + selections + " FROM device WHERE next_safety_test <= dateadd(1 MONTH TO CURRENT_DATE)", true);
+            String query = "SELECT d.DEV_ID AS id, c.NAME1 AS customer, t.TYPE_NAME AS type, d.DEV_NO, d.SERIAL_NO, l.LOCATION_NAME AS location, s.TEXT AS status, d.NEXT_SAFETY_TEST AS next_test, d.LAST_SAFETY_TEST AS last_test, d.CURR_REPORT_ID AS report_id " +
+                    "FROM device d, customer c, dev_type t, location l, lu_device_status s " +
+                    "WHERE next_safety_test <= dateadd(1 MONTH TO CURRENT_DATE) " +
+                    "AND c.CUST_ID = d.CUST_ID " +
+                    "AND t.TYPE_ID = d.TYPE_ID " +
+                    "AND l.LOCATION_ID = d.LOCATION_ID " +
+                    "AND s.LU_NO = d.STATUS ";
+            SelectQueryToTable(query, true, "Geräte");
         });
         btn_All.addActionListener(e -> {
-            String selections = "DEV_ID, CUST_ID, TYPE_ID, DEV_NO, SERIAL_NO, LOCATION_ID, STATUS, CURR_REPORT_ID, NEXT_SAFETY_TEST, LAST_SAFETY_TEST";
-            SelectQueryToTable("SELECT " + selections + " FROM device", true);
+            String query = "SELECT d.DEV_ID AS id, c.NAME1 AS customer, t.TYPE_NAME AS type, d.DEV_NO, d.SERIAL_NO, l.LOCATION_NAME AS location, s.TEXT AS status, d.NEXT_SAFETY_TEST AS next_test, d.LAST_SAFETY_TEST AS last_test, d.CURR_REPORT_ID AS report_id " +
+                    "FROM device d, customer c, dev_type t, location l, lu_device_status s " +
+                    "WHERE c.CUST_ID = d.CUST_ID " +
+                    "AND t.TYPE_ID = d.TYPE_ID " +
+                    "AND l.LOCATION_ID = d.LOCATION_ID " +
+                    "AND s.LU_NO = d.STATUS ";
+            SelectQueryToTable(query, true, "Geräte");
         });
+        btn_NotFoundDevices.addActionListener(e -> setNotFoundDevices());
     }
 
-    /** Programm Start Hilfsmethode**/
+    /**
+     * Programm Start Hilfsmethode
+     **/
     public void setStyle() {
         Color color_Background = new Color(32, 136, 203);
 
         JPanel[] panels = {panel_Main, panel_Import_Buttons, panel_View_Buttons, panel_Import, panel_View};
-        for (JPanel panel : panels)
-        {
+        for (JPanel panel : panels) {
             panel.setBackground(color_Background);
         }
 
@@ -124,29 +153,28 @@ public class MainWindow {
             table.setAutoCreateRowSorter(true);
         }
 
-        pane_Tabs.setTitleAt(0,"Import");
-        pane_Tabs.setTitleAt(1,"View");
+        pane_Tabs.setTitleAt(0, "Import");
+        pane_Tabs.setTitleAt(1, "View");
 
-        try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); } //Setze Windows Look!
+        try {
+            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+        } //Setze Windows Look!
         catch (UnsupportedLookAndFeelException e) {
             JOptionPane.showMessageDialog(null,
                     "Fehler beim Setzen des Windows Designs: " + e.getMessage(),
                     "UnsupportedLookAndFeelException",
                     JOptionPane.ERROR_MESSAGE);
-        }
-        catch (ClassNotFoundException e) {
+        } catch (ClassNotFoundException e) {
             JOptionPane.showMessageDialog(null,
                     "Fehler beim Setzen des Windows Designs: " + e.getMessage(),
                     "ClassNotFoundException",
                     JOptionPane.ERROR_MESSAGE);
-        }
-        catch (InstantiationException e) {
+        } catch (InstantiationException e) {
             JOptionPane.showMessageDialog(null,
                     "Fehler beim Setzen des Windows Designs: " + e.getMessage(),
                     "InstantiationException",
                     JOptionPane.ERROR_MESSAGE);
-        }
-        catch (IllegalAccessException e) {
+        } catch (IllegalAccessException e) {
             JOptionPane.showMessageDialog(null,
                     "Fehler beim Setzen des Windows Designs: " + e.getMessage(),
                     "IllegalAccessException",
@@ -154,10 +182,11 @@ public class MainWindow {
         }
     }
 
-    /** Pfade einlesen falls paths.cfg vorhanden **/
-    public String[] readPaths(String[] paths)
-    {
-        File config = new File(System.getenv("PUBLIC") + "/Documents/Protokollmanger Advanced/paths.cfg");
+    /**
+     * Pfade einlesen falls paths.cfg vorhanden
+     **/
+    public String[] readPaths(String[] paths) {
+        File config = new File(System.getenv("PUBLIC") + CONFIGPATH);
         String error = "";
         if (config.exists()) {
             try {
@@ -193,8 +222,8 @@ public class MainWindow {
             } catch (IOException e) {
                 error = "IOException beim öffnen von Öffentliche Dokumente/Protokollmanager Advanced/paths.cfg!";
             }
-            if (paths[0] == null || paths[1] == null || paths[2] == null){
-                txtFieldStatus.setText(" "+ error);
+            if (paths[0] == null || paths[1] == null || paths[2] == null) {
+                txtFieldStatus.setText(" " + error);
                 this.disableAll(true);
 
                 JOptionPane.showMessageDialog(null,
@@ -204,8 +233,7 @@ public class MainWindow {
 
                 return null;
             }
-        }
-        else {
+        } else {
             paths = this.setPathsOnStart();
             if (paths[0] == null) {
                 error += " Datenbankpfad ist null!";
@@ -219,8 +247,8 @@ public class MainWindow {
             if (paths[2] == null) {
                 error += " Excelpfad ist null!";
             }
-            if (paths[0] == null || paths[1] == null || paths[2] == null){
-                txtFieldStatus.setText(" "+ error);
+            if (paths[0] == null || paths[1] == null || paths[2] == null) {
+                txtFieldStatus.setText(" " + error);
                 this.disableAll(true);
 
                 JOptionPane.showMessageDialog(null,
@@ -241,26 +269,27 @@ public class MainWindow {
         return paths;
     }
 
-    /** Testen ob Pfade korrekt sind **/
-    public boolean checkIfFileOrDirectoryDoesntExist(String path)
-    {
+    /**
+     * Testen ob Pfade korrekt sind
+     **/
+    public boolean checkIfFileOrDirectoryDoesntExist(String path) {
         if (path.startsWith("jdbc:firebirdsql://localhost:3050/"))
             path = StringUtils.remove(path, "jdbc:firebirdsql://localhost:3050/");
         File tmpDir = new File(path);
         return !tmpDir.exists();
     }
 
-    /** Alle Button disablen, falls ein Pfad null oder ungültig ist **/
-    public void disableAll(boolean disable)
-    {
-        btn_ImportXLSX.setEnabled(disable);
-        btn_Script.setEnabled(disable);
-        cmb_Query.setEnabled(disable);
+    /**
+     * Alle Button disablen, falls ein Pfad null oder ungültig ist
+     **/
+    public void disableAll(boolean disable) {
+        panel_Main.setEnabled(disable);
     }
 
-    /** Ansonsten Pfade setzen lassen **/
-    public String[] setPathsOnStart()
-    {
+    /**
+     * Ansonsten Pfade setzen lassen
+     **/
+    public String[] setPathsOnStart() {
         JOptionPane.showMessageDialog(null,
                 "Die Datei paths.cfg, in welcher Pfade gespeichert werden, ist noch nicht vorhanden. Deswegen müssen jetzt 3 Pfade gesetzt werden.",
                 "paths.cfg ist noch nicht vorhanden",
@@ -268,21 +297,22 @@ public class MainWindow {
 
         String[] paths = new String[3];
 
-        paths[0] = this.fileDialogOnStart("Setze den Pfad für Datenbank.FDB","Datenbank.FDB","fdb", false);
-        paths[1] = this.fileDialogOnStart("Setze den Pfad für den Skriptordner","Skriptordner","sql",true);
-        paths[2] = this.fileDialogOnStart("Setze den Pfad für die Exceldateien","Exceldateien","xlsx", true);
+        paths[0] = this.fileDialogOnStart("Setze den Pfad für Datenbank.FDB", "Datenbank.FDB", "fdb", false);
+        paths[1] = this.fileDialogOnStart("Setze den Pfad für den Skriptordner", "Skriptordner", "sql", true);
+        paths[2] = this.fileDialogOnStart("Setze den Pfad für die Exceldateien", "Exceldateien", "xlsx", true);
 
         return paths;
     }
 
-    /** Ansonsten Pfade setzen lassen Hilfsmethode**/
-    public String fileDialogOnStart(String status, String filtername, String filtertype, boolean directory)
-    {
+    /**
+     * Ansonsten Pfade setzen lassen Hilfsmethode
+     **/
+    public String fileDialogOnStart(String status, String filtername, String filtertype, boolean directory) {
         txtFieldStatus.setText(" " + status);
 
         JFileChooser fc;
         if (directory) {
-            fc = new JFileChooser(System.getenv("PUBLIC")+"/Documents") {
+            fc = new JFileChooser(System.getenv("PUBLIC") + "/Documents") {
                 public void approveSelection() {
                     if (!getSelectedFile().isFile())
                         super.approveSelection();
@@ -290,11 +320,11 @@ public class MainWindow {
             };
             fc.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES);
         } else {
-            fc = new JFileChooser(System.getenv("PUBLIC")+"/Documents");
+            fc = new JFileChooser(System.getenv("PUBLIC") + "/Documents");
             fc.setFileSelectionMode(JFileChooser.FILES_ONLY);
         }
 
-        FileNameExtensionFilter filter = new FileNameExtensionFilter(filtername,filtertype);
+        FileNameExtensionFilter filter = new FileNameExtensionFilter(filtername, filtertype);
         fc.setFileFilter(filter);
         fc.setDialogTitle(status);
 
@@ -307,12 +337,13 @@ public class MainWindow {
         }
     }
 
-    /** Gesetzte Pfade in paths.cfg speichern **/
-    public boolean savePaths(String[] paths)
-    {
+    /**
+     * Gesetzte Pfade in paths.cfg speichern
+     **/
+    public boolean savePaths(String[] paths) {
         try {
             BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(
-                    System.getenv("PUBLIC")+"/Documents/Protokollmanger Advanced/paths.cfg"), StandardCharsets.UTF_8));
+                    System.getenv("PUBLIC") + "/Documents/Protokollmanger Advanced/paths.cfg"), StandardCharsets.UTF_8));
             writer.write(paths[0]);
             writer.newLine();
             writer.write(paths[1]);
@@ -327,9 +358,10 @@ public class MainWindow {
         }
     }
 
-    /** Items zur Checkbox hinzufügen **/
-    public void addCheckboxItems(String str_ScriptBasePath)
-    {
+    /**
+     * Items (Skripte) zur Checkbox (COMBOBOX!) hinzufügen
+     **/
+    public void addCheckboxItems(String str_ScriptBasePath) {
         File folder = new File(str_ScriptBasePath);
 
         File[] listOfFiles = folder.listFiles();
@@ -342,19 +374,18 @@ public class MainWindow {
             }
         }
 
-        if (cmb_Query.getItemCount() == 0)
-        {
+        if (cmb_Query.getItemCount() == 0) {
             cmb_Query.addItem("Keine .sql Dateien vorhanden! " + str_ScriptBasePath);
             cmb_Query.setEnabled(false);
             btn_Script.setEnabled(false);
         }
     }
 
-    /** Zur Datenbank connecten **/
-    public void connectDatabase(String str_DBPath)
-    {
-        if (checkIfFileOrDirectoryDoesntExist(str_DBPath))
-        {
+    /**
+     * Zur Datenbank connecten
+     **/
+    public void connectDatabase(String str_DBPath) {
+        if (checkIfFileOrDirectoryDoesntExist(str_DBPath)) {
             txtFieldStatus.setText(" Die Datenbank befindet sich nicht mehr in: " + str_DBPath);
             btn_Script.setEnabled(false);
             btn_ImportXLSX.setEnabled(false);
@@ -371,9 +402,10 @@ public class MainWindow {
         }
     }
 
-    /** Importiere aus einer Excel Datei **/
-    public void importExcel(String str_ImportPath)
-    {
+    /**
+     * Importiere aus einer Excel Datei
+     **/
+    public void importExcel(String str_ImportPath) {
         txtFieldStatus.setText(" Importiere Excel-Datei");
 
         File folder = new File(str_ImportPath);
@@ -385,7 +417,7 @@ public class MainWindow {
         }
 
         JFileChooser fc = new JFileChooser(str_ImportPath);
-        FileNameExtensionFilter filter = new FileNameExtensionFilter("Excel-Datei","xlsx");
+        FileNameExtensionFilter filter = new FileNameExtensionFilter("Excel-Datei", "xlsx");
         fc.setFileFilter(filter);
         fc.setDialogTitle("Wähle die zu importierende Excel-Datei");
 
@@ -426,7 +458,7 @@ public class MainWindow {
             int countImport = 0;
             while (bool_continue) {
                 returnDTM = this.importDeviceFromFile(sheet.getRow(lastRow), selectedFile.getName(), dtm);
-                if (returnDTM.getValueAt(returnDTM.getRowCount()-1,3).toString().contains("erfolgreich")) //Zähle Imports mit
+                if (returnDTM.getValueAt(returnDTM.getRowCount() - 1, 3).toString().contains("erfolgreich")) //Zähle Imports mit
                     countImport++;
                 lastRow--;
 
@@ -440,7 +472,7 @@ public class MainWindow {
                 table_Import.getColumn(table_Import.getColumnName(2)).setMaxWidth(105);         //2 = Status
                 table_Import.getColumn(table_Import.getColumnName(2)).setPreferredWidth(105);
 
-                if (returnDTM.getValueAt(returnDTM.getRowCount()-1,2).toString().equals("Fehler")) //Wenn der letzte Eintrag "Fehler" enthält
+                if (returnDTM.getValueAt(returnDTM.getRowCount() - 1, 2).toString().equals("Fehler")) //Wenn der letzte Eintrag "Fehler" enthält
                 {
                     //Erstelle PopUpBox
                     final JPanel panel = new JPanel();
@@ -464,7 +496,7 @@ public class MainWindow {
                     radio1.setSelected(true);
                     //Ende Erstelle PopUpBox
 
-                    int n = JOptionPane.showConfirmDialog(null, panel, txtFieldStatus.getText(), JOptionPane.DEFAULT_OPTION,JOptionPane.WARNING_MESSAGE);
+                    int n = JOptionPane.showConfirmDialog(null, panel, txtFieldStatus.getText(), JOptionPane.DEFAULT_OPTION, JOptionPane.WARNING_MESSAGE);
                     if (n != JOptionPane.OK_OPTION) //Wenn X geklickt wurde
                         bool_continue = false;
                     else {
@@ -486,9 +518,10 @@ public class MainWindow {
         }
     }
 
-    /** Importiere aus einer Excel Datei Hilfsmethode**/
-    public DefaultTableModel importDeviceFromFile(XSSFRow currentRow, String filename, DefaultTableModel dtm)
-    {
+    /**
+     * Importiere aus einer Excel Datei Hilfsmethode
+     **/
+    public DefaultTableModel importDeviceFromFile(XSSFRow currentRow, String filename, DefaultTableModel dtm) {
         try {
             Vector<Object> data = new Vector<>();
 
@@ -500,7 +533,7 @@ public class MainWindow {
                 devicenumber = currentRow.getCell(4).getRichStringCellValue().toString();
                 serial = StringUtils.right(devicenumber, 5);
             } else {
-                txtFieldStatus.setText("Die Seriennummer vom Gerät in Reihe " + (currentRow.getRowNum()+1) + " ist leer oder hat nicht die Länge 11");
+                txtFieldStatus.setText("Die Seriennummer vom Gerät in Reihe " + (currentRow.getRowNum() + 1) + " ist leer oder hat nicht die Länge 11");
                 if (currentRow.getCell(3) != null)
                     data.add(currentRow.getCell(3).toString());
                 else
@@ -510,7 +543,7 @@ public class MainWindow {
                 else
                     data.add("?");
                 data.add("Fehler");
-                data.add("Seriennummer vom Gerät in Reihe " + (currentRow.getRowNum()+1) + " ist leer oder hat nicht die Länge 11");
+                data.add("Seriennummer vom Gerät in Reihe " + (currentRow.getRowNum() + 1) + " ist leer oder hat nicht die Länge 11");
                 dtm.addRow(data);
                 return dtm;
             }
@@ -532,12 +565,13 @@ public class MainWindow {
                 data.add("Fehler");
                 data.add("Kunde " + StringUtils.remove(filename, ".xlsx") + " konnte nicht gefunden werden");
                 dtm.addRow(data);
+
                 return dtm;
             }
 
             // Check if it already exists
             Boolean exists = this.checkIfExists(serial, cust_id);
-            if (exists == null){
+            if (exists == null) {
                 txtFieldStatus.setText(" SQLException beim Abfragen ob die Seriennummer " + serial + " bereits existiert");
                 data = new Vector<>();
                 data.add(serial);
@@ -565,8 +599,7 @@ public class MainWindow {
             String location_id;
             if (resultSet.next()) {
                 location_id = resultSet.getString(1);
-                if (!resultSet.isLast())
-                {
+                if (!resultSet.isLast()) {
                     location_id = "-1";
                     data = new Vector<>();
                     data.add(serial);
@@ -575,8 +608,7 @@ public class MainWindow {
                     data.add("Standort " + currentRow.getCell(5).toString() + " ergab mehrere Treffer in der Datenbank und wurde deswegen auf leer gesetzt");
                     dtm.addRow(data);
                 }
-            }
-            else {
+            } else {
                 location_id = "-1";
                 data = new Vector<>();
                 data.add(serial);
@@ -600,8 +632,7 @@ public class MainWindow {
             if (resultSet.next())
                 if (resultSet.isLast())
                     type_id = resultSet.getString(1);
-                else
-                {
+                else {
                     //Es sind mehrere Geräte dieses Typs mit verschiedenen Herstellern vorhanden
                     //Frage nach Gerätetyp mit dem Hersteller "Unbekannt"
                     query = "SELECT type_id FROM dev_type WHERE type_name = '" + currentRow.getCell(6).toString() + "' AND MANUFACTURER_ID = -1;";
@@ -616,15 +647,14 @@ public class MainWindow {
                                 + " war mehrmals vorhanden, weswegen Hersteller 'Unbekannt' ausgewählt wurde");
                         dtm.addRow(data);
                         type_id = resultSet.getString(1);
-                    }
-                    else {
+                    } else {
                         data = new Vector<>();
                         data.add(serial);
                         data.add(devicenumber);
                         data.add("Warnung");
                         data.add("Gerätetyp " + currentRow.getCell(6).toString()
                                 + " ist mehrmals vorhanden, allerdings kein Mal mit Hersteller 'Unbekannt' weswegen Gerätetyp" +
-                                "auf 'Unbekannt' gesetzt wird");
+                                " auf 'Unbekannt' gesetzt wird");
                         dtm.addRow(data);
                         type_id = "-1";
                     }
@@ -641,7 +671,13 @@ public class MainWindow {
             }
 
             //GET DEV ID
-            query = "EXECUTE PROCEDURE SP_GEN_DEVICE_ID";
+            query = "EXECUTE PROCEDURE SP_GEN_DEVICE_ID"; //TODO: Erhöht automatisch die DEV_ID in der Datenbank und gibt sie zurück
+                                                            // Bei einem Fehler beim Import oder wenn das zu importierende Gerät schon
+                                                            // vorhanden ist, sollte SP_GEN_DEVICE_ID nicht ausgeführt werden oder
+                                                            // rückgänig gemacht werden (wenn möglich?) da sonst die nächste zu
+                                                            // vergebene DEV_ID in der Datenbank 1 zu hoch ist.
+                                                            // z.B. erst DEV_ID berechnen mit größte DEV_ID + 1. Erst wenn Gerät
+                                                            // erfolgreich importiert wurde, SP_GEN_DEVICE_ID aufrufen
             preparedStatement = connection.prepareStatement(query);
             resultSet = preparedStatement.executeQuery();
             String dev_id;
@@ -696,16 +732,16 @@ public class MainWindow {
             data.add("wurde erfolgreich importiert");
             dtm.addRow(data);
             return dtm;
-        }
-        catch (SQLException ex) {
+        } catch (SQLException ex) {
             txtFieldStatus.setText(" SQLException: " + ex.getMessage());
             return null;
         }
     }
 
-    /** Teste ob ein Gerät schon in der Datenbank ist **/
-    public Boolean checkIfExists(String serialnumber, String cust_id)
-    {
+    /**
+     * Teste ob ein Gerät schon in der Datenbank ist
+     **/
+    public Boolean checkIfExists(String serialnumber, String cust_id) {
         try {
             String query = "SELECT dev_id FROM device WHERE serial_no = '" + serialnumber + "' AND cust_id = '" + cust_id + "';";
             PreparedStatement preparedStatement = connection.prepareStatement(query);
@@ -717,16 +753,16 @@ public class MainWindow {
         }
     }
 
-    /** Führe ein Skript aus **/
-    public String executeScript(String str_ScriptBasePath)
-    {
+    /**
+     * Führe ein Skript aus
+     **/
+    public String executeScript(String str_ScriptBasePath) {
         if (cmb_Query.getSelectedItem() != null)
             txtFieldStatus.setText(" Führe " + cmb_Query.getSelectedItem().toString() + " aus...");
         else
             return " Fehler! Das aktive Element der Combobox ist null!";
 
-        if (checkIfFileOrDirectoryDoesntExist(str_ScriptBasePath))
-        {
+        if (checkIfFileOrDirectoryDoesntExist(str_ScriptBasePath)) {
             return " Die Datei " + str_ScriptBasePath + " existiert nicht!";
         }
 
@@ -735,8 +771,7 @@ public class MainWindow {
             Path path = Paths.get(str_ScriptBasePath + filename);
 
             String content = Files.readString(path, StandardCharsets.UTF_8);
-            if (content.contains(ERSETZEN))
-            {
+            if (content.contains(ERSETZEN)) {
                 //Erstelle PopUpBox
                 final JPanel panel = new JPanel();
 
@@ -750,25 +785,25 @@ public class MainWindow {
                 String[] contentSeperate = content.split(ERSETZEN);
                 doc.insertString(doc.getLength(), contentSeperate[0], null); //Erste ohne Style
 
-                for (int i = 1; i < contentSeperate.length; i++)
-                {
+                for (int i = 1; i < contentSeperate.length; i++) {
                     doc.insertString(doc.getLength(), ERSETZEN, styleRed); //ersetzenString in Rot
                     doc.insertString(doc.getLength(), contentSeperate[i], null); //Rest ohne Farbe
                 }
                 //Ende Erstelle PopUpBox
 
-                int n = JOptionPane.showConfirmDialog(null, panel, "Das Skript enthält " + ERSETZEN + ", was ersetzt werden muss", JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE);
+                int n = JOptionPane.showConfirmDialog(null, panel, "Das Skript enthält " + ERSETZEN +
+                        ", was ersetzt werden muss", JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE);
                 if (n != JOptionPane.OK_OPTION) //Wenn X geklickt wurde
-                    return " Ausführung von " + cmb_Query.getSelectedItem().toString() + " wurde abgebrochen!";
+                    return " Ausführung von " + filename + " wurde abgebrochen!";
 
                 n = JOptionPane.showConfirmDialog(
                         null,
-                        doc.getText(0,doc.getLength()),
+                        doc.getText(0, doc.getLength()),
                         "Soll das Skript so abgesendet werden?",
                         JOptionPane.YES_NO_OPTION);
 
                 if (n != JOptionPane.YES_OPTION) //Wenn No oder X geklickt wurde
-                    return " Ausführung von " + cmb_Query.getSelectedItem().toString() + " wurde abgebrochen!";
+                    return " Ausführung von " + filename + " wurde abgebrochen!";
 
                 content = textPane.getText();
             }
@@ -776,32 +811,28 @@ public class MainWindow {
             PreparedStatement preparedStatement;
 
             if (filename.startsWith("Check") || filename.startsWith("Get")) {
-                this.SelectQueryToTable(content, false);
+                this.SelectQueryToTable(content, false, "Geräte");
+                return "Skript " + filename + " hat " + table_Import.getRowCount() + " Zeilen als Antwort bekommen";
             }
-            if (filename.startsWith("Set") || filename.startsWith("Update"))
-            {
+            if (filename.startsWith("Set") || filename.startsWith("Update")) {
                 table_Import.setModel(new DefaultTableModel()); // Remove Tablecontent
 
                 //updateCount ist sowohl zum zählen der update statements als auch nachher zum wiedergeben der geupdateten zeilen
                 int updateCount = StringUtils.countMatches(content.toLowerCase(), "update");
-                if (updateCount > 1)
-                {
+                if (updateCount > 1) {
                     String[] contentSeperate = content.toLowerCase().split("update");
                     updateCount = 0;
-                    for (int i = 1; i < contentSeperate.length; i++)
-                    {
+                    for (int i = 1; i < contentSeperate.length; i++) {
                         preparedStatement = connection.prepareStatement("update" + contentSeperate[i]);
                         updateCount = updateCount + preparedStatement.executeUpdate();
                     }
-                }
-                else {
+                } else {
                     preparedStatement = connection.prepareStatement(content);
                     updateCount = preparedStatement.executeUpdate();
                 }
-                return "Es wurden " + updateCount + " Datensätze geupdatet durch " + cmb_Query.getSelectedItem().toString();
+                return "Es wurden " + updateCount + " Datensätze geupdatet durch " + filename;
             }
-
-            return "Skript " + cmb_Query.getSelectedItem().toString() + " wurde erfolgreich ausgeführt.";
+            return ("Der Name des Skripts " + filename + " beginnt nicht mit Check/Get oder Set/Update!!!");
         } catch (FileNotFoundException e) {
             return "FileNotFoundException: " + e.getMessage();
         } catch (IOException e) {
@@ -813,9 +844,11 @@ public class MainWindow {
         }
     }
 
-    /** Führe Query aus und stelle Response in Table dar **/
-    public void SelectQueryToTable(String content, boolean view)
-    {
+    /**
+     * Führe Query aus und stelle Response in Table dar
+     **/
+    public void SelectQueryToTable(String content, boolean view, String name) {
+
         try {
             PreparedStatement preparedStatement;
             preparedStatement = connection.prepareStatement(content);
@@ -830,13 +863,12 @@ public class MainWindow {
                 };
 
                 for (int i = 1; i <= columnCount; i++) {
-                    dtm.addColumn(rsmd.getColumnName(i));
+                    dtm.addColumn(rsmd.getColumnLabel(i));
                 }
                 while (resultSet.next()) {
                     Vector<Object> data = new Vector<>();
                     for (int i = 1; i <= columnCount; i++) {
                         data.add(resultSet.getString(i));
-
                     }
                     dtm.addRow(data);
                 }
@@ -845,21 +877,21 @@ public class MainWindow {
                 else
                     table_Import.setModel(dtm);
 
-                txtFieldStatus.setText(" " + dtm.getRowCount() + " Geräte wurden gefunden");
+                txtFieldStatus.setText(" " + dtm.getRowCount() + " " + name + " wurden gefunden");
             }
-        }catch (SQLException throwables) {
-                throwables.printStackTrace();
+        } catch (SQLException throwables) {
+            throwables.printStackTrace();
         }
     }
 
-    /** Importiere Daten vom P1 Testgerät TODO: Noch nicht fertig **/
-    public void importP1()
-    {
+    /**
+     * Importiere Daten vom P1 Testgerät TODO: Noch nicht fertig
+     **/
+    public void importP1() {
         SerialPort comPort = null;
         SerialPort[] ports = SerialPort.getCommPorts();
 
-        for (SerialPort port : ports)
-        {
+        for (SerialPort port : ports) {
             System.out.println(port.getPortDescription());
             if (port.getPortDescription().equals("FT232R USB UART")
                     || port.getPortDescription().equals("VCP0"))
@@ -875,71 +907,61 @@ public class MainWindow {
         comPort.setNumStopBits(0);
         comPort.openPort();
         try {
-            byte[] readBuffer;
-            int numRead;
-
             //Geräte Informationen
             byte[] buffer = hexStringToByteArray("49444e3f0d0a");
-            comPort.writeBytes(buffer, buffer.length);
-
-            Thread.sleep(1000);
-            while (comPort.bytesAvailable() == 0)
-                Thread.sleep(20);
-
-            readBuffer = new byte[comPort.bytesAvailable()];
-            numRead = comPort.readBytes(readBuffer, readBuffer.length);
-            System.out.println("Read " + numRead + " bytes.");
-            System.out.println(readBuffer);
-
+            printBuffer(comPort, buffer);
 
             //Wie viele Geräte
             buffer = hexStringToByteArray("30303030303030314d4e4f0d0a");
-            comPort.writeBytes(buffer, buffer.length);
-
-            Thread.sleep(1000);
-
-            while (comPort.bytesAvailable() == 0)
-                Thread.sleep(20);
-
-            readBuffer = new byte[comPort.bytesAvailable()];
-            numRead = comPort.readBytes(readBuffer, readBuffer.length);
-            System.out.println("Read " + numRead + " bytes.");
-            System.out.println(readBuffer);
+            printBuffer(comPort, buffer);
 
             //Geräte Nummer 1
             buffer = hexStringToByteArray("30303030303030314d454d303030300d0a");
-            comPort.writeBytes(buffer, buffer.length);
-
-            Thread.sleep(1000);
-
-            while (comPort.bytesAvailable() == 0)
-                Thread.sleep(20);
-
-            readBuffer = new byte[comPort.bytesAvailable()];
-            numRead = comPort.readBytes(readBuffer, readBuffer.length);
-            System.out.println("Read " + numRead + " bytes.");
-            System.out.println(readBuffer);
-
+            printBuffer(comPort, buffer);
 
             //Geräte Nummer 2
             buffer = hexStringToByteArray("30303030303030314d454d303030310d0a");
-            comPort.writeBytes(buffer, buffer.length);
-            Thread.sleep(4000);
+            printBuffer(comPort, buffer);
 
-            while (comPort.bytesAvailable() == 0)
-                Thread.sleep(20);
-
-            readBuffer = new byte[comPort.bytesAvailable()];
-            numRead = comPort.readBytes(readBuffer, readBuffer.length);
-            System.out.println("Read " + numRead + " bytes.");
-            System.out.println(readBuffer);
-
-
-        } catch (Exception e) { e.printStackTrace(); }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
         comPort.closePort();
     }
 
-    /** Konvertiere Hex String zu Byte Array **/
+    /**
+     * Gebe Buffer von P1 Import aus, Hilfsmethode für importP1()
+     **/
+    public void printBuffer(SerialPort comPort, byte[] buffer)
+    {
+        try {
+            comPort.writeBytes(buffer, buffer.length);
+            Thread.sleep(4000);
+
+            //Maximal i*0,1 Sekunden auf neue bytes warten
+            for (int i = 0; i < 10; i++) {
+                if (comPort.bytesAvailable() == 0)
+                    break;
+                Thread.sleep(100);
+            }
+            if (comPort.bytesAvailable() != 0) {
+                System.out.println("No Bytes Available!");
+                return;
+            }
+
+            byte[] readBuffer = new byte[comPort.bytesAvailable()];
+            int numRead = comPort.readBytes(readBuffer, readBuffer.length);
+            System.out.println("Read " + numRead + " bytes.");
+            System.out.println(Arrays.toString(readBuffer));
+        }
+        catch (Exception ex) {
+            System.out.println(ex.getMessage());
+        }
+    }
+
+    /**
+     * Konvertiere Hex String zu Byte Array, Hilfsmethode für importP1()
+     **/
     public static byte[] hexStringToByteArray(String s) {
         int len = s.length();
         byte[] data = new byte[len / 2];
@@ -948,5 +970,27 @@ public class MainWindow {
                     + Character.digit(s.charAt(i+1), 16));
         }
         return data;
+    }
+
+    /**
+     * Überprüfe bei Geräten die ab zu vor einem Monat getestet wurden, ob Geräte in den Räumen nicht getestet/gefunden
+     * wurden
+     */
+    public void setNotFoundDevices()
+    {
+        String query = "SELECT DISTINCT d.LOCATION_ID, l.LOCATION_NAME " +
+                "FROM DEVICE d, LOCATION l " +
+                "WHERE d.LAST_SAFETY_TEST BETWEEN dateadd(-1 MONTH TO CAST('NOW' AS date)) AND CAST('NOW' AS date) " +
+                "AND d.LOCATION_ID IS NOT NULL " +
+                "AND d.LOCATION_ID = l.LOCATION_ID " +
+                "AND d." +
+                "ORDER BY d.LAST_SAFETY_TEST DESC";
+        SelectQueryToTable(query, false, "Räume");
+
+        /*
+         * TODO: Für alle Räume in der Tabelle überpüfen, ob 'geprüfte' Geräte vorhanden sind, bei welchen
+         * der letzte Prüftermin länger als 1 Jahr zurückliegt. Wenn ja, diese auf 'nicht gefunden' setzen.
+         * Außerdem nur, wenn großteil der Geräte zuletzt geprüft wurden!
+         */
     }
 }
